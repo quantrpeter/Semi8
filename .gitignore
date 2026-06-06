@@ -1,0 +1,26 @@
+# Verilator build output
+obj_dir/
+*.o
+*.d
+*.a
+*.gch
+V*__ALL.*
+V*.mk
+
+# Simulation / waveform dumps
+*.vcd
+*.fst
+*.dat
+
+# Generated program image (reproduce with `make hex`)
+program.hex
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editor / OS
+.DS_Store
+*.swp

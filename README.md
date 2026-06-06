@@ -42,3 +42,6 @@
 - GCC/LLVM support
 - Open-source simulator
 - Standard JTAG/SWD debug interface
+
+# Architecture
+

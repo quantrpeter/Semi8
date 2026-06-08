@@ -45,3 +45,31 @@
 
 # Architecture
 
+## Running on real FPGA hardware
+
+The RTL sources under `src/` (open8_top, core, memories) are completely board-agnostic.
+All board-specific code (clock/reset primitives, pin mapping, constraints, and board Makefile)
+lives under `boards/<boardname>/`.
+
+### Quick start (IceSugar 40)
+
+```sh
+make hex                       # assemble program.s -> program.hex
+make BOARD=icesugar40 bitstream
+make BOARD=icesugar40 prog     # requires iceprog + USB connection
+```
+
+See `boards/icesugar40/README.md` for prerequisites, how to edit the pin constraints
+(`constr/pins.pcf` — you **must** put the correct pins for your board), LED polarity,
+clock/reset details, and troubleshooting.
+
+### Adding support for another FPGA
+
+1. Create `boards/yourboard/` (copy the icesugar40 layout as a template).
+2. Implement `top.v` (instantiate `open8_top`, add your FPGA's oscillator/PLL/reset sync).
+3. Provide `constr/pins.pcf` and a `Makefile` with yosys/nextpnr/icepack (or vendor tools) rules.
+4. Share reusable modules in `boards/common/rtl/`.
+5. The root `Makefile` already dispatches `make BOARD=yourboard bitstream` etc.
+
+The first supported board is `icesugar40` (iCE40UP5K-SG48).
+

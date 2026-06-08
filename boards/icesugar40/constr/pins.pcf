@@ -1,0 +1,54 @@
+# IceSugar 40 (iCE40UP5K-SG48) pin constraints for Open8 soft core demo
+#
+# CRITICAL: The numbers below are GUESSES based on common iCE40UP5K boards.
+# They may or may not match YOUR physical wiring / PMOD connections.
+#
+# The previous build failed with:
+#   ERROR: package does not have a pin named '29' (on line 21)
+#   ERROR: Loading PCF failed.
+#
+# This is because not every number 1-48 is a valid user IO on the sg48 package.
+# Valid pins for --package sg48 (from icebox chipdb in your Docker image):
+#   2,3,4,6,9,10,11,12,13,14,15,16,17,18,19,20,21,23,25,26,27,28,31,32,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48
+#
+# HOW TO GET THE REAL PINS FOR YOUR iCESugar 40 BOARD:
+# 1. The board is almost certainly the MuseLab iCESugar (wuxx/icesugar on GitHub).
+# 2. Download the schematic: https://github.com/wuxx/icesugar/tree/master/schematic
+#    (use iCESugar-v1.5.pdf or the latest version present)
+# 3. Open the PDF and find the iCE40UP5K-SG48 connections to the PMOD headers
+#    (PMOD1, PMOD2, PMOD3) and the onboard RGB LED + DIP switch (KEY).
+# 4. The numbers in the PCF are the physical QFN-48 package pin numbers (e.g. pin 35).
+# 5. Map your 8 LEDs (or a pmod-led board) and reset button to 8+1 of the valid pins above.
+# 6. If using the official pmod-led, trace the schematic for that PMOD too.
+#
+# The 8-bit port_out (from OUT 0, Rn in assembly) is exposed as led0..led7.
+# The demo writes 0x37 (55) -> binary ...0011 0111 so bits 0,1,2,4,5 should be '1'.
+#
+# If your LEDs are active-LOW, change the assign statements in top.v to ~port_out[x].
+#
+# Reset button: active-low (press connects to GND). We drive internal rst_in high on press.
+
+# --- 8 LED outputs (EXAMPLE valid pins - VERIFY WITH YOUR SCHEMATIC!) ---
+set_io led0 35
+set_io led1 36
+set_io led2 37
+set_io led3 38
+set_io led4 39
+set_io led5 40
+set_io led6 41
+set_io led7 42
+
+# --- Reset button (input, active low when pressed) ---
+set_io rst_btn 10
+
+# --- Optional: external clock (currently unused; design uses internal HFOSC) ---
+# set_io ext_clk 12
+
+# --- If you have UART / other I/O, add them here and wire in top.v ---
+# set_io uart_tx  ...
+# set_io uart_rx  ...
+
+# Notes:
+# - Package: sg48 (QFN-48)
+# - Device: iCE40UP5K
+# - After editing, re-run synthesis.

@@ -24,3 +24,14 @@ venv/
 # Editor / OS
 .DS_Store
 *.swp
+
+# FPGA / iCE40 (yosys + nextpnr + icepack) build products
+build/
+*.json
+*.asc
+*.bin
+*.rpt
+
+# Board-local copy of the program image (the real one lives at the root)
+boards/*/program.hex
+boards/*/*/program.hex

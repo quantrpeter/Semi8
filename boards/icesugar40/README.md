@@ -11,7 +11,15 @@ make hex
 # Build the FPGA bitstream (runs inside your Docker image)
 make BOARD=icesugar40 bitstream
 
-# Program the FPGA over USB (uses icesprog on the host)
+# Program the FPGA over USB (iCELink mass-storage: just copy the .bin to the mounted drive)
+make BOARD=icesugar40 prog
+```
+
+Select a different example (e.g. the blink demo that toggles a pin):
+
+```sh
+make EXAMPLE=blink hex
+make BOARD=icesugar40 bitstream
 make BOARD=icesugar40 prog
 ```
 
@@ -61,7 +69,8 @@ Open8 exposes one 8-bit port at I/O address 0 (see `src/open8_top.v`):
 - `OUT 0, Rxx`  → `port_out` (→ LEDs)
 - `IN  Rxx, 0`  → `port_in` (tied to 0 in this wrapper)
 
-The demo in `program.s` ends with `OUT 0, R16` (value 55).
+The default demo (`example/program/program.s`) ends with `OUT 0, R16` (value 55).
+Use `make EXAMPLE=blink ...` for a simple LED toggle loop that never halts.
 
 You can easily extend `top.v` to connect real buttons, UART, SPI, etc. to `port_in` / additional logic.
 
@@ -74,9 +83,9 @@ docker run --rm quantrpeter/ice40:latest yosys --version
 # etc.
 ```
 
-- The image `quantrpeter/ice40:latest` contains yosys, nextpnr-ice40, icepack (and icesprog / iceprog variants for your IceSugar 40 / Pro boards).
+- The image `quantrpeter/ice40:latest` contains yosys, nextpnr-ice40, icepack.
 - `make BOARD=icesugar40 bitstream` (or `make build` inside the board dir) automatically runs the inner build inside the container using the pattern from your reference (`buildDocker` + inner `build` / `bitstream-inner`).
-- Programming (`prog`) runs on the host with `icesprog` (default) so USB access to the board works easily. Override with `ICEPROG=iceprog make ... prog` if needed for your setup.
+- Programming (`prog`) runs on the host by detecting the iCELink USB drive (via `df | grep iCELink`) and copying the `.bin` to it (same idea as the reference `prog_flash` target). No `icesprog` / `iceprog` tool is required.
 
 Native tools on the host are no longer required for the common flow. You can still force a native build with `make BOARD=icesugar40 bitstream-native` if you have the tools installed directly.
 
@@ -100,7 +109,7 @@ To add a completely new board (e.g. Tang Nano, ECP5, etc.):
 ## Troubleshooting
 
 - `program.hex: No such file or directory` → run `make hex` from the Semi8 root first.
-- Programming fails / no USB device → check cable, permissions, try `icesprog -t` (or `iceprog -t`). The `prog` target runs on the host.
+- Programming fails / iCELink not found → ensure the board is connected and appears as a drive (check `df | grep -i iCELink`). The `prog` target just does a `cp` to that mount point.
 - LEDs show wrong pattern or inverted → fix pin numbers in `.pcf` and/or invert polarity in `top.v`.
 - Want a slower / external clock → uncomment the ext_clk line in pcf and modify `top.v` to use it (add SB_PLL40 if you need a specific frequency).
 - Adding more peripherals → instantiate them in `top.v` and connect to the core's I/O bus if you want to go beyond the simple 8-bit port (advanced).

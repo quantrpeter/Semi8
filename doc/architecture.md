@@ -157,16 +157,18 @@ Opcode word layout used by the decoder and the assembler (`tools/asm.py`):
 * A **read-only debug port** (`dbg_addr → dbg_data`, plus `dbg_pc`,
   `dbg_sreg`) lets the C++ testbench inspect any register and processor state
   without depending on Verilator-internal symbol names.
-* `tools/asm.py` is a two-pass assembler that turns `program.s` into the
-  `$readmemh` image `program.hex`.
+* `tools/asm.py` is a two-pass assembler that turns the selected example
+  (e.g. `example/program/program.s` or `example/blink/blink.s`) into the
+  `$readmemh` image `program.hex` at the project root.
 * `tb/sim_main.cpp` clocks the core until `halted`, checks register / flag /
   port results, and writes a `open8.vcd` waveform.
 
 ```
-make            # assemble + verilate + build + run (writes open8.vcd)
-make hex        # re-assemble program.s only
-make wave       # run then open the VCD in gtkwave
-make clean      # remove build artifacts
+make                    # assemble + verilate + build + run (writes open8.vcd)
+make hex                # re-assemble the selected example (EXAMPLE=...) into program.hex
+make EXAMPLE=blink hex  # select a different example under example/
+make wave               # run then open the VCD in gtkwave
+make clean              # remove build artifacts
 ```
 
 ## Limitations & roadmap

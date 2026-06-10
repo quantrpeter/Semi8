@@ -7,7 +7,8 @@
 // - Provides synchronized reset from a button
 //
 // The core runs the program in program.hex automatically after reset.
-// The demo (program.s) writes the result (0x37) to I/O port 0.
+// The default demo (example/program/program.s) writes the result (0x37) to I/O port 0.
+// Use EXAMPLE=blink for a continuous toggle of bit 0 (visible on led0).
 
 module top (
     input  wire rst_btn,   // button, press = low (active-low input)

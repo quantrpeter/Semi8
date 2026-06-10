@@ -39,7 +39,11 @@ PROG_HEX  := program.hex
 YOSYS     ?= yosys
 NEXTPNR   ?= nextpnr-ice40
 ICEPACK   ?= icepack
-ICEPROG   ?= icesprog
+
+# iCELink programming via USB mass-storage (no icesprog / ICEPROG needed).
+# The board appears as a drive named iCELink (or similar). We copy the .bin to it.
+ICELINK_DIR := $(shell df | grep -i iCELink | awk '{print $$NF}')
+$(warning iCELink path: $(ICELINK_DIR))
 
 # Docker image containing the iCE40 toolchain (yosys, nextpnr-ice40, icepack, etc.)
 # for IceSugar 40 / IceSugar Pro. Mount the full project root so relative paths
@@ -52,7 +56,9 @@ DOCKER_RUN   := docker run --rm -v $(PROJECT_ROOT):/work -w /work $(DOCKER_IMAGE
 
 all: bitstream
 
-# Ensure the demo program is assembled (delegates to root)
+# Ensure the selected example is assembled into program.hex at the project root.
+# Delegates to the root Makefile, which respects EXAMPLE= (default: program).
+#   make EXAMPLE=blink BOARD=icesugar40 bitstream
 hex:
 	$(MAKE) -C ../.. hex
 
@@ -91,8 +97,17 @@ bitstream: hex
 # Bypass Docker completely (only if you have native tools on the host).
 bitstream-native: $(BIN)
 
+# Program the FPGA via iCELink (USB mass-storage).
+# The board appears as a drive (usually named iCELink). We simply copy the .bin to it.
+# This matches the "prog_flash" pattern from the reference (no icesprog / ICEPROG / iceprog needed).
 prog: bitstream
-	$(ICEPROG) $(BIN)
+	echo "Copying $(BIN) to iCELink drive ($(ICELINK_DIR))..."
+	@if [ -d '$(ICELINK_DIR)' ]; then \
+		cp $(BIN) $(ICELINK_DIR); \
+	else \
+		echo "iCELink not found"; \
+		exit 1; \
+	fi
 
 clean:
 	rm -rf $(BUILD_DIR) $(PROG_HEX)

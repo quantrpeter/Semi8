@@ -71,7 +71,12 @@ $(JSON): $(RTL) $(PCF) $(PROG_HEX)
 	$(YOSYS) -p "synth_ice40 -top $(TOP) -json $(JSON)" $(RTL)
 
 $(ASC): $(JSON) $(PCF)
-	$(NEXTPNR) --up5k --package sg48 --pcf $(PCF) --json $(JSON) --asc $(ASC)
+	# --pcf-allow-unconstrained is required because the onboard RGB LED
+	# (LED_R / LED_G / LED_B) is driven exclusively by the SB_RGBA_DRV
+	# hard IP primitive. The primitive automatically claims the dedicated
+	# RGB package pins; we intentionally do NOT put set_io lines for them
+	# in pins.pcf. Without this flag nextpnr refuses to load the PCF.
+	$(NEXTPNR) --up5k --package sg48 --pcf $(PCF) --json $(JSON) --asc $(ASC) --pcf-allow-unconstrained
 
 $(BIN): $(ASC)
 	$(ICEPACK) $(ASC) $(BIN)
@@ -111,3 +116,6 @@ prog: bitstream
 
 clean:
 	rm -rf $(BUILD_DIR) $(PROG_HEX)
+
+# Note: when invoking from the project root, prefer the root target's "fpga-clean"
+# (make BOARD=icesugar40 fpga-clean) so that root-level clean rules are also considered.

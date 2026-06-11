@@ -57,7 +57,9 @@ module open8_core #(
 );
 
     // ---- SREG bit positions -------------------------------------------------
+    /* verilator lint_off UNUSEDPARAM */
     localparam C = 0, Z = 1, N = 2, V = 3, S = 4, H = 5, T = 6, I = 7;
+    /* verilator lint_on UNUSEDPARAM */
 
     // ---- Architectural state ------------------------------------------------
     reg [7:0]  R [0:31];
@@ -66,6 +68,21 @@ module open8_core #(
     reg        halt;
 
     integer k;
+
+    // Named wires for every register so they appear cleanly in waveforms
+    // (gtkwave / VCD). The raw array R[0:31] often has poor per-element
+    // visibility under Verilator tracing; these wires are simple assigns.
+    // The /*verilator public*/ attributes ensure Verilator keeps the signals
+    // in the emitted C++ model and VCD trace (they are otherwise only used for
+    // debug/visibility and could be optimized away).
+    wire [7:0] R0  /*verilator public*/ = R[0],  R1  /*verilator public*/ = R[1],  R2  /*verilator public*/ = R[2],  R3  /*verilator public*/ = R[3];
+    wire [7:0] R4  /*verilator public*/ = R[4],  R5  /*verilator public*/ = R[5],  R6  /*verilator public*/ = R[6],  R7  /*verilator public*/ = R[7];
+    wire [7:0] R8  /*verilator public*/ = R[8],  R9  /*verilator public*/ = R[9],  R10 /*verilator public*/ = R[10], R11 /*verilator public*/ = R[11];
+    wire [7:0] R12 /*verilator public*/ = R[12], R13 /*verilator public*/ = R[13], R14 /*verilator public*/ = R[14], R15 /*verilator public*/ = R[15];
+    wire [7:0] R16 /*verilator public*/ = R[16], R17 /*verilator public*/ = R[17], R18 /*verilator public*/ = R[18], R19 /*verilator public*/ = R[19];
+    wire [7:0] R20 /*verilator public*/ = R[20], R21 /*verilator public*/ = R[21], R22 /*verilator public*/ = R[22], R23 /*verilator public*/ = R[23];
+    wire [7:0] R24 /*verilator public*/ = R[24], R25 /*verilator public*/ = R[25], R26 /*verilator public*/ = R[26], R27 /*verilator public*/ = R[27];
+    wire [7:0] R28 /*verilator public*/ = R[28], R29 /*verilator public*/ = R[29], R30 /*verilator public*/ = R[30], R31 /*verilator public*/ = R[31];
 
     // ---- Instruction fetch (async) -----------------------------------------
     assign pmem_addr_a = pc[PROG_ADDR_W-1:0];
@@ -99,7 +116,10 @@ module open8_core #(
     reg  [7:0] a, b, res;
     reg        cin;
     reg  [8:0] add9, sub9;
-    reg  [4:0] add4, sub4;
+    /* verilator lint_off UNUSEDSIGNAL */
+    reg  [4:0] add4_tmp, sub4_tmp; // 5-bit results for half-carry (H flag) computation
+    /* verilator lint_on UNUSEDSIGNAL */
+    reg        add4_c, sub4_c;     // half-carry (bit 4 of the 4-bit add/sub)
     reg        fC, fZ, fN, fV, fS, fH;
 
     always @* begin
@@ -118,7 +138,8 @@ module open8_core #(
         io_wdata   = 8'h00;
 
         a = 8'h00; b = 8'h00; cin = 1'b0;
-        add9 = 9'h0; sub9 = 9'h0; add4 = 5'h0; sub4 = 5'h0;
+        add9 = 9'h0; sub9 = 9'h0; add4_tmp = 5'h0; sub4_tmp = 5'h0;
+        add4_c = 1'b0; sub4_c = 1'b0;
         res = 8'h00; fC=0; fZ=0; fN=0; fV=0; fS=0; fH=0;
 
         casez (ir)
@@ -133,10 +154,11 @@ module open8_core #(
             16'b0001_11??_????_????: begin // ADC
                 a = Rd; b = Rr;
                 cin = ir[12] ? sreg[C] : 1'b0; // ir[12]=1 -> ADC
-                add9 = {1'b0,a} + {1'b0,b} + cin;
-                add4 = {1'b0,a[3:0]} + {1'b0,b[3:0]} + cin;
+                add9   = {1'b0,a} + {1'b0,b} + {8'd0, cin};
+                add4_tmp = {1'b0,a[3:0]} + {1'b0,b[3:0]} + {4'd0, cin};
+                add4_c   = add4_tmp[4];
                 res = add9[7:0];
-                fC = add9[8]; fH = add4[4];
+                fC = add9[8]; fH = add4_c;
                 fN = res[7];  fZ = (res == 8'h00);
                 fV = (~(a[7]^b[7])) & (a[7]^res[7]);
                 fS = fN ^ fV;
@@ -154,10 +176,11 @@ module open8_core #(
             16'b0000_01??_????_????: begin // CPC 0000_01
                 a = Rd; b = Rr;
                 cin = ir[12] ? 1'b0 : sreg[C];
-                sub9 = {1'b0,a} - {1'b0,b} - cin;
-                sub4 = {1'b0,a[3:0]} - {1'b0,b[3:0]} - cin;
+                sub9 = {1'b0,a} - {1'b0,b} - {8'd0, cin};
+                sub4_tmp = {1'b0,a[3:0]} - {1'b0,b[3:0]} - {4'd0, cin};
+                sub4_c   = sub4_tmp[4];
                 res = sub9[7:0];
-                fC = sub9[8]; fH = sub4[4];
+                fC = sub9[8]; fH = sub4_c;
                 fN = res[7];
                 fV = (a[7]^b[7]) & (a[7]^res[7]);
                 fS = fN ^ fV;
@@ -202,9 +225,10 @@ module open8_core #(
             16'b0011_????_????_????: begin // CPI
                 a = Rdi; b = K8;
                 sub9 = {1'b0,a} - {1'b0,b};
-                sub4 = {1'b0,a[3:0]} - {1'b0,b[3:0]};
+                sub4_tmp = {1'b0,a[3:0]} - {1'b0,b[3:0]};
+                sub4_c   = sub4_tmp[4];
                 res = sub9[7:0];
-                fC=sub9[8]; fH=sub4[4]; fN=res[7]; fZ=(res==0);
+                fC=sub9[8]; fH=sub4_c; fN=res[7]; fZ=(res==0);
                 fV=(a[7]^b[7]) & (a[7]^res[7]); fS=fN^fV;
                 reg_we = (ir[14:12]==3'b101); // SUBI writes, CPI does not
                 reg_waddr = di; reg_wdata = res;

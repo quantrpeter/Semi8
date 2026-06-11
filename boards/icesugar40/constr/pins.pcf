@@ -1,48 +1,58 @@
 # IceSugar 40 (iCE40UP5K-SG48) pin constraints for Open8 soft core demo
 #
-# CRITICAL: The numbers below are GUESSES based on common iCE40UP5K boards.
-# They may or may not match YOUR physical wiring / PMOD connections.
+# VISIBLE OUTPUT ON A STOCK iCESUGAR BOARD (no extra hardware):
+#   The board has a single onboard RGB LED driven by the iCE40UP5K hard IP
+#   (SB_RGBA_DRV primitive in boards/icesugar40/top.v). This design drives that
+#   RGB LED directly from the 8-bit port_out value produced by the Open8 core.
 #
-# The previous build failed with:
-#   ERROR: package does not have a pin named '29' (on line 21)
-#   ERROR: Loading PCF failed.
+#   - When the blink example writes 0x00 to port 0, the RGB LED turns ON (bright).
+#   - When it writes 0xFF, the RGB LED turns OFF.
+#   The blink.s has a ~0.35 s half-period delay (three nested loops) so you should
+#   see a slow, clear blink on the small RGB LED near the center/USB side of the board.
 #
-# This is because not every number 1-48 is a valid user IO on the sg48 package.
-# Valid pins for --package sg48 (from icebox chipdb in your Docker image):
-#   2,3,4,6,9,10,11,12,13,14,15,16,17,18,19,20,21,23,25,26,27,28,31,32,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48
+#   IMPORTANT:
+#   * The RGB pins are SPECIAL. They are claimed automatically by the SB_RGBA_DRV
+#     primitive. DO NOT add any "set_io LED_R ...", "set_io LED_G ...", or
+#     "set_io LED_B ..." lines in this file. If you do, nextpnr will error.
+#   * Look at the actual RGB LED on the board after programming, not random FPGA pins.
 #
-# HOW TO GET THE REAL PINS FOR YOUR iCESugar 40 BOARD:
-# 1. The board is almost certainly the MuseLab iCESugar (wuxx/icesugar on GitHub).
-# 2. Download the schematic: https://github.com/wuxx/icesugar/tree/master/schematic
-#    (use iCESugar-v1.5.pdf or the latest version present)
-# 3. Open the PDF and find the iCE40UP5K-SG48 connections to the PMOD headers
-#    (PMOD1, PMOD2, PMOD3) and the onboard RGB LED + DIP switch (KEY).
-# 4. The numbers in the PCF are the physical QFN-48 package pin numbers (e.g. pin 35).
-# 5. Map your 8 LEDs (or a pmod-led board) and reset button to 8+1 of the valid pins above.
-# 6. If using the official pmod-led, trace the schematic for that PMOD too.
+# The led0..led7 signals below are for people who connect an external 8-LED PMOD
+# board or discrete LEDs to the PMOD headers. Those pins are just regular user IO.
+# The numbers below are still somewhat guessed — adjust to your actual PMOD wiring
+# if you add a LED board. On many PMOD LED boards the LEDs are active-low.
 #
-# The 8-bit port_out (from OUT 0, Rn in assembly) is exposed as led0..led7.
-# The demo writes 0x37 (55) -> binary ...0011 0111 so bits 0,1,2,4,5 should be '1'.
+# Reset button (KEY / DIP switch on iCESugar): active-low when pressed.
+# We treat a low on the pin as an external reset request.
 #
-# If your LEDs are active-LOW, change the assign statements in top.v to ~port_out[x].
-#
-# Reset button: active-low (press connects to GND). We drive internal rst_in high on press.
+# References:
+#   https://github.com/wuxx/icesugar/tree/master/schematic  (iCESugar-v1.5.pdf etc.)
+#   https://github.com/wuxx/icesugar/tree/master/src/basic/verilog/common/io.pcf
+#   https://github.com/wuxx/icesugar/tree/master/src/basic/verilog/hard_rgb
 
-# --- 8 LED outputs (EXAMPLE valid pins - VERIFY WITH YOUR SCHEMATIC!) ---
-set_io led0 35
-set_io led1 36
-set_io led2 37
-set_io led3 38
-set_io led4 39
-set_io led5 40
-set_io led6 41
-set_io led7 42
+# --- Clock input ---
+# Match the style used in the reference icesugar40-example designs
+# (e.g. src/basic/verilog/leds/leds.v declares "input clk" at the top level).
+# Pin 35 is the conventional clock pin on iCESugar / many iCE40UP5K boards
+# (see common/io.pcf and multiple *.pcf files in the icesugar40-example repo).
+set_io clk 35
 
 # --- Reset button (input, active low when pressed) ---
 set_io rst_btn 10
 
-# --- Optional: external clock (currently unused; design uses internal HFOSC) ---
-# set_io ext_clk 12
+# --- 8 optional LED outputs for PMOD LED board or external LEDs ---
+# These follow the mapping from the reference pmod_leds/led.pcf (when clk is on 35).
+# The top.v drives them with the inverted port value (~port_out) because
+# many PMOD LED boards light when the pin is low (active-low LEDs).
+# If you use different wiring or active-high LEDs, adjust the numbers or the
+# polarity in the 8 assign statements in top.v.
+set_io led0 45
+set_io led1 43
+set_io led2 38
+set_io led3 36
+set_io led4 46
+set_io led5 44
+set_io led6 42
+set_io led7 37
 
 # --- If you have UART / other I/O, add them here and wire in top.v ---
 # set_io uart_tx  ...
@@ -51,4 +61,13 @@ set_io rst_btn 10
 # Notes:
 # - Package: sg48 (QFN-48)
 # - Device: iCE40UP5K
-# - After editing, re-run synthesis.
+# - clk is on pin 35 (standard for most icesugar40-example designs, see leds.v style).
+# - led0-7 use the pmod_leds mapping (safe when clk=35). These are optional.
+# - NO set_io lines for the onboard RGB LED (LED_R / LED_G / LED_B).
+#   The SB_RGBA_DRV primitive in top.v owns those dedicated package pins.
+# - After editing, re-run: make EXAMPLE=blink BOARD=icesugar40 fpga-clean bitstream prog
+# - Power-cycle the board after the iCELink copy completes.
+#
+# The Makefile passes --pcf-allow-unconstrained to nextpnr because the RGB pins
+# (LED_R/G/B) are intentionally left unconstrained — they are claimed by the
+# SB_RGBA_DRV primitive in top.v and must not have set_io lines here.

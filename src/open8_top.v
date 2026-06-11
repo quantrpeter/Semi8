@@ -51,6 +51,19 @@ module open8_top #(
         .dbg_sreg(dbg_sreg), .dbg_pc(dbg_pc)
     );
 
+    // Named register wires at top level for easy gtkwave visibility.
+    // (The core also declares these internally as R0..R31.)
+    // Use open8_top.R16 (or open8_top.core.R16) in gtkwave.
+    // The /*verilator public*/ attributes ensure they are preserved in VCD traces.
+    wire [7:0] R0  /*verilator public*/ = core.R0,  R1  /*verilator public*/ = core.R1,  R2  /*verilator public*/ = core.R2,  R3  /*verilator public*/ = core.R3;
+    wire [7:0] R4  /*verilator public*/ = core.R4,  R5  /*verilator public*/ = core.R5,  R6  /*verilator public*/ = core.R6,  R7  /*verilator public*/ = core.R7;
+    wire [7:0] R8  /*verilator public*/ = core.R8,  R9  /*verilator public*/ = core.R9,  R10 /*verilator public*/ = core.R10, R11 /*verilator public*/ = core.R11;
+    wire [7:0] R12 /*verilator public*/ = core.R12, R13 /*verilator public*/ = core.R13, R14 /*verilator public*/ = core.R14, R15 /*verilator public*/ = core.R15;
+    wire [7:0] R16 /*verilator public*/ = core.R16, R17 /*verilator public*/ = core.R17, R18 /*verilator public*/ = core.R18, R19 /*verilator public*/ = core.R19;
+    wire [7:0] R20 /*verilator public*/ = core.R20, R21 /*verilator public*/ = core.R21, R22 /*verilator public*/ = core.R22, R23 /*verilator public*/ = core.R23;
+    wire [7:0] R24 /*verilator public*/ = core.R24, R25 /*verilator public*/ = core.R25, R26 /*verilator public*/ = core.R26, R27 /*verilator public*/ = core.R27;
+    wire [7:0] R28 /*verilator public*/ = core.R28, R29 /*verilator public*/ = core.R29, R30 /*verilator public*/ = core.R30, R31 /*verilator public*/ = core.R31;
+
     open8_pmem #(
         .ADDR_W(PROG_ADDR_W), .INIT(PROG_INIT)
     ) pmem (

@@ -4,7 +4,9 @@ module open8_dmem #(
     parameter BUS_W    = 16
 )(
     input  wire              clk,
+    /* verilator lint_off UNUSEDSIGNAL */
     input  wire [BUS_W-1:0]  addr,
+    /* verilator lint_on UNUSEDSIGNAL */
     input  wire              we,
     input  wire [7:0]        wdata,
     output wire [7:0]        rdata

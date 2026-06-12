@@ -13,8 +13,13 @@ module open8_dmem #(
 );
     reg [7:0] mem [0:(1<<ADDR_W)-1];
 
+    // Simulation-only zero-fill; see the note in open8_pmem.v. Under yosys
+    // this loop would corrupt the memory inference, so it is compiled out
+    // (iCE40 RAM/FF contents power up as 0 anyway).
+`ifndef SYNTHESIS
     integer i;
     initial for (i = 0; i < (1<<ADDR_W); i = i + 1) mem[i] = 8'h00;
+`endif
 
     wire [ADDR_W-1:0] a = addr[ADDR_W-1:0];
 

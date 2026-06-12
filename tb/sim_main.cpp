@@ -16,7 +16,7 @@ static vluint64_t    main_time = 0;
 
 double sc_time_stamp() { return main_time; }
 
-#define MAX_CYCLES 10000000
+#define MAX_CYCLES 1000000
 
 static void tick() {
     // falling edge

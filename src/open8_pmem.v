@@ -11,11 +11,17 @@ module open8_pmem #(
 );
     reg [15:0] mem [0:(1<<ADDR_W)-1];
 
+    // NOTE: the zero-fill loop is simulation-only. Under yosys (which defines
+    // SYNTHESIS) a procedural for-loop in an initial block becomes unclocked
+    // memory-write cells; that destroys the $readmemh init and the whole ROM
+    // (and then the whole CPU) gets optimized away to constants. With only
+    // $readmemh, yosys emits proper $meminit data and the ROM synthesizes
+    // correctly (unwritten words default to 0 in hardware).
+`ifndef SYNTHESIS
     integer i;
-    initial begin
-        for (i = 0; i < (1<<ADDR_W); i = i + 1) mem[i] = 16'h0000;
-        $readmemh(INIT, mem);
-    end
+    initial for (i = 0; i < (1<<ADDR_W); i = i + 1) mem[i] = 16'h0000;
+`endif
+    initial $readmemh(INIT, mem);
 
     assign data_a = mem[addr_a];
     assign data_b = mem[addr_b];

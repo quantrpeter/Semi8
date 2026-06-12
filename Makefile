@@ -80,8 +80,21 @@ all: run
 # (program.hex is the stable interface used by open8_pmem.v $readmemh and board rules.)
 hex: $(HEX)
 
-$(HEX): $(ASM) tools/asm.py
-	$(PYTHON) tools/asm.py $(ASM) $(HEX)
+# Always reassemble the selected example, but only touch program.hex when its
+# content actually changed. This makes switching EXAMPLE= work reliably
+# (timestamps alone can't detect it) without spuriously invalidating the
+# Verilator build when the program is unchanged.
+$(HEX): $(ASM) tools/asm.py FORCE
+	@$(PYTHON) tools/asm.py $(ASM) $(HEX).tmp
+	@if cmp -s $(HEX).tmp $(HEX); then \
+		rm -f $(HEX).tmp; \
+		echo "$(HEX) is up to date (EXAMPLE=$(EXAMPLE))"; \
+	else \
+		mv -f $(HEX).tmp $(HEX); \
+		echo "$(HEX) updated from $(ASM)"; \
+	fi
+
+FORCE:
 
 # Build the Verilated model and the C++ testbench (with VCD tracing)
 # We force-remove $(OBJ_DIR) first. This avoids a common macOS + ccache +
@@ -142,7 +155,7 @@ wave: run
 	gtkwave $(VCD)
 
 clean: fpga-clean
-	rm -rf $(OBJ_DIR) $(VCD) $(HEX)
+	rm -rf $(OBJ_DIR) $(VCD) $(HEX) $(HEX).tmp
 
 # ---------------------------------------------------------------------------
 # FPGA board delegation (keeps src/ portable and simulation flow untouched)

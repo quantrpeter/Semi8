@@ -24,8 +24,7 @@ RTL       := top.v \
              ../../src/open8_top.v \
              ../../src/open8_core.v \
              ../../src/open8_pmem.v \
-             ../../src/open8_dmem.v \
-             ../common/rtl/reset_synchronizer.v
+             ../../src/open8_dmem.v
 PCF       := constr/pins.pcf
 BUILD_DIR := build
 JSON      := $(BUILD_DIR)/$(TOP).json
@@ -71,12 +70,7 @@ $(JSON): $(RTL) $(PCF) $(PROG_HEX)
 	$(YOSYS) -p "synth_ice40 -top $(TOP) -json $(JSON)" $(RTL)
 
 $(ASC): $(JSON) $(PCF)
-	# --pcf-allow-unconstrained is required because the onboard RGB LED
-	# (LED_R / LED_G / LED_B) is driven exclusively by the SB_RGBA_DRV
-	# hard IP primitive. The primitive automatically claims the dedicated
-	# RGB package pins; we intentionally do NOT put set_io lines for them
-	# in pins.pcf. Without this flag nextpnr refuses to load the PCF.
-	$(NEXTPNR) --up5k --package sg48 --pcf $(PCF) --json $(JSON) --asc $(ASC) --pcf-allow-unconstrained
+	$(NEXTPNR) --up5k --package sg48 --pcf $(PCF) --json $(JSON) --asc $(ASC)
 
 $(BIN): $(ASC)
 	$(ICEPACK) $(ASC) $(BIN)

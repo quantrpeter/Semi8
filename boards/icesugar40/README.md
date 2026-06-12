@@ -5,62 +5,32 @@ This adds first-class support for running the Open8 8-bit soft core on an **iCE4
 ## Quick start from project root
 
 ```sh
-# Assemble the included demo program (computes 1+2+...+10 = 55 = 0x37)
-make hex
+# Blink demo: toggles the onboard RGB LED white at ~1 Hz
+make EXAMPLE=blink BOARD=icesugar40 bitstream
+make EXAMPLE=blink BOARD=icesugar40 prog
 
-# Build the FPGA bitstream (runs inside your Docker image)
-make BOARD=icesugar40 bitstream
-
-# Program the FPGA over USB (iCELink mass-storage: just copy the .bin to the mounted drive)
-make BOARD=icesugar40 prog
+# Or the classic sum demo (computes 1+2+...+10 = 55 = 0x37, shown on the port pins)
+make EXAMPLE=program BOARD=icesugar40 bitstream
+make EXAMPLE=program BOARD=icesugar40 prog
 ```
 
-Select a different example (e.g. the blink demo that toggles a pin):
+The synthesis (yosys + nextpnr-ice40 + icepack) runs inside the `quantrpeter/ice40:latest` container. Only the assembler (`make hex`, Python) and the final `prog` step run on the host.
 
-```sh
-make EXAMPLE=blink hex
-make BOARD=icesugar40 bitstream
-make BOARD=icesugar40 prog
-```
+After configuration the core starts automatically (after a short internal power-on reset) and executes `program.hex`.
 
-After reset the core starts automatically and drives the result (0x37) onto the 8-bit I/O port.  
-Connect LEDs (or a logic analyzer / scope) to the pins defined in `constr/pins.pcf` to see binary `00110111`.
+## What you see on a stock board
 
-The synthesis (yosys + nextpnr-ice40 + icepack) runs inside the `quantrpeter/ice40:latest` container you built. Only `make hex` (Python) and the final `prog` step run on the host.
+The design follows the proven reference design in
+`icesugar40-example/src/basic/verilog/leds`:
 
-## Pin mapping (IMPORTANT — this is why your last build failed)
-
-**Edit `constr/pins.pcf` before the first successful build.**
-
-Your last `make BOARD=icesugar40 bitstream` reached nextpnr but then failed with:
-
-```
-ERROR: package does not have a pin named '29' (on line 21)
-ERROR: Loading PCF failed.
-```
-
-The PCF now contains a set of *valid* package pins for sg48 (extracted from the chipdb inside your Docker image), but they are still just educated guesses.
-
-**You must** replace them with the real pin numbers from your board's schematic:
-
-1. The board matches the MuseLab iCESugar (see https://github.com/wuxx/icesugar).
-2. Download the schematic PDF: https://github.com/wuxx/icesugar/tree/master/schematic → iCESugar-v1.5.pdf (or latest).
-3. Look at the iCE40UP5K connections to PMOD1/PMOD2/PMOD3 and the onboard RGB LED + switch (KEY).
-4. Use the QFN-48 package pin numbers (the numbers like 35, 36, ...) in the `set_io` lines.
-5. There is also a pmod-led schematic if you are using the official LED PMOD.
-
-Current (example) mapping in the file:
-- `led0` … `led7` ← 8-bit `port_out` (written by `OUT 0, Rn`)
-- `rst_btn`     ← reset button (active-low, press to GND)
-
-After editing the .pcf, just re-run `make BOARD=icesugar40 bitstream` (it will be fast because yosys already ran and the JSON is cached in build/).
-
-If your LEDs are active-low, change the `assign` statements in `top.v` from `port_out[x]` to `~port_out[x]`.
+- The onboard **RGB LED** is driven as ordinary user IO on pins **40 (R), 41 (G), 39 (B)**, **active-low** (drive 0 to light a channel). No `SB_RGBA_DRV` hard IP is used.
+- `LED_R/G/B` show `port_out[0]`, `port_out[1]`, `port_out[2]` respectively, so with the blink example (`port_out` toggling `0x00`/`0xFF`) the RGB LED blinks **white at roughly 1 Hz**.
+- The full 8-bit `port_out` is also available (active-low) on the **PMOD2** pins (`led0`..`led7`, see `constr/pins.pcf`) for an external LED board.
 
 ## Clock and reset
 
-- **Clock**: Internal HFOSC running at approximately 48 MHz (divide-by-1). No external clock pin is used by default.
-- **Reset**: Button input with a 2-FF synchronizer (async assert, sync deassert). The core starts cleanly after release.
+- **Clock**: the board's 12 MHz oscillator on package pin **35** (same as all the reference examples).
+- **Reset**: a short internal power-on reset (~2.7 ms) generated in `top.v`. There is **no external reset pin** — an earlier revision mapped one to pin 10, which on iCESugar is actually the USB_DP line to the iCELink and held the core in reset permanently.
 
 ## I/O port
 
@@ -69,49 +39,31 @@ Open8 exposes one 8-bit port at I/O address 0 (see `src/open8_top.v`):
 - `OUT 0, Rxx`  → `port_out` (→ LEDs)
 - `IN  Rxx, 0`  → `port_in` (tied to 0 in this wrapper)
 
-The default demo (`example/program/program.s`) ends with `OUT 0, R16` (value 55).
-Use `make EXAMPLE=blink ...` for a simple LED toggle loop that never halts.
+The board wrapper instantiates the SoC with `DMEM_ADDR_W=6` (64 bytes of data RAM). The data memory is asynchronous-read, so it is built from LUTs/FFs — the simulation default of 4 KB would not fit in a UP5K. Raise the parameter in `top.v` if your program needs more RAM (and check the nextpnr utilization report).
 
-You can easily extend `top.v` to connect real buttons, UART, SPI, etc. to `port_in` / additional logic.
+## Synthesis notes (important if you modify the RTL)
+
+- `src/open8_pmem.v` / `src/open8_dmem.v` guard their simulation-only
+  `initial for (...) mem[i] = 0;` zero-fill loops with `` `ifndef SYNTHESIS ``.
+  Under yosys such loops become unclocked memory-write cells, which silently
+  destroys the `$readmemh` ROM contents — the whole CPU then constant-folds
+  away and you get a bitstream with the LEDs tied off (nothing blinks).
+  If you add new memories, initialize them with `$readmemh`/`initial mem[i] = ...`
+  constants only, or use the same guard.
+- A healthy build of the blink example uses a few hundred `ICESTORM_LC`
+  (check the nextpnr log). If you ever see ~12 cells placed and
+  "No Fmax available; no interior timing paths found", the design collapsed
+  to constants and the bitstream is useless.
 
 ## Toolchain (Docker)
 
-All FPGA synthesis tools are provided by the Docker image you built:
-
-```sh
-docker run --rm quantrpeter/ice40:latest yosys --version
-# etc.
-```
-
 - The image `quantrpeter/ice40:latest` contains yosys, nextpnr-ice40, icepack.
-- `make BOARD=icesugar40 bitstream` (or `make build` inside the board dir) automatically runs the inner build inside the container using the pattern from your reference (`buildDocker` + inner `build` / `bitstream-inner`).
-- Programming (`prog`) runs on the host by detecting the iCELink USB drive (via `df | grep iCELink`) and copying the `.bin` to it (same idea as the reference `prog_flash` target). No `icesprog` / `iceprog` tool is required.
-
-Native tools on the host are no longer required for the common flow. You can still force a native build with `make BOARD=icesugar40 bitstream-native` if you have the tools installed directly.
-
-## Root Makefile integration
-
-The top-level `Makefile` understands:
-
-```sh
-make BOARD=icesugar40 bitstream
-make BOARD=icesugar40 prog
-make BOARD=icesugar40 clean   # (via fpga-clean or direct)
-```
-
-To add a completely new board (e.g. Tang Nano, ECP5, etc.):
-
-1. `mkdir -p boards/<boardname>/constr`
-2. Create `boards/<boardname>/top.v`, `constr/pins.pcf`, `Makefile`, `README.md`
-3. Keep using the same `open8_top` + `src/*.v` + `common/rtl` helpers
-4. The root dispatcher already works for any `BOARD=xxx`
+- `make BOARD=icesugar40 bitstream` runs the inner build inside the container.
+- Programming (`prog`) runs on the host by detecting the iCELink USB drive (via `df | grep iCELink`) and copying the `.bin` to it. No `icesprog` / `iceprog` tool is required.
 
 ## Troubleshooting
 
-- `program.hex: No such file or directory` → run `make hex` from the Semi8 root first.
-- Programming fails / iCELink not found → ensure the board is connected and appears as a drive (check `df | grep -i iCELink`). The `prog` target just does a `cp` to that mount point.
-- LEDs show wrong pattern or inverted → fix pin numbers in `.pcf` and/or invert polarity in `top.v`.
-- Want a slower / external clock → uncomment the ext_clk line in pcf and modify `top.v` to use it (add SB_PLL40 if you need a specific frequency).
-- Adding more peripherals → instantiate them in `top.v` and connect to the core's I/O bus if you want to go beyond the simple 8-bit port (advanced).
-
-Have fun running real 8-bit AVR-flavored code on cheap iCE40 hardware!
+- LED does not blink → re-run a clean build (`make EXAMPLE=blink BOARD=icesugar40 fpga-clean bitstream prog`) and power-cycle the board after the copy to iCELink completes.
+- Programming fails / iCELink not found → ensure the board is connected and appears as a drive (check `df | grep -i iCELink`).
+- Switching examples → just pass a different `EXAMPLE=`; the root Makefile reassembles `program.hex` automatically and only touches it when the content changed.
+- Want different blink speed → adjust the delay loop in `example/blink/blink.s` (see the timing comment there; the clock is 12 MHz).

@@ -137,3 +137,7 @@ Add your own by creating `example/myprog/myprog.s` (or `example/myprog/program.s
 
 The first supported board is `icesugar40` (iCE40UP5K-SG48).
 
+# Dev notes
+
+> If your verilator or clang is too old, can't get this project compile. I am using verilator 5.049 and clang 22 by homebrew
+

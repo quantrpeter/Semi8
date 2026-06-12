@@ -16,6 +16,8 @@ static vluint64_t    main_time = 0;
 
 double sc_time_stamp() { return main_time; }
 
+#define MAX_CYCLES 10000000
+
 static void tick() {
     // falling edge
     dut->clk = 0;
@@ -52,16 +54,11 @@ int main(int argc, char** argv) {
     Verilated::traceEverOn(true);
     const char* vcd_name = "open8.vcd";
     bool is_blink = false;
-    int max_cycles = 10000000;
+    int max_cycles = MAX_CYCLES;
     for (int i = 1; i < argc; i++) {
         if (strncmp(argv[i], "+trace=", 7) == 0) vcd_name = argv[i] + 7;
         if (strncmp(argv[i], "+example=blink", 14) == 0) is_blink = true;
         if (strncmp(argv[i], "+max_cycles=", 12) == 0) max_cycles = atoi(argv[i] + 12);
-    }
-    if (is_blink && max_cycles < 100000000) {
-        // For blink we want to see several 0x00<->0xFF transitions in the VCD
-        // even when the long software delay loops from blink.s are present.
-        max_cycles = 2000000000;  // safety net; the toggle counter below will stop earlier
     }
     trace = new VerilatedVcdC;
     dut->trace(trace, 99);

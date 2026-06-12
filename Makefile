@@ -141,7 +141,7 @@ run: $(OBJ_DIR)/V$(TOP)
 wave: run
 	gtkwave $(VCD)
 
-clean:
+clean: fpga-clean
 	rm -rf $(OBJ_DIR) $(VCD) $(HEX)
 
 # ---------------------------------------------------------------------------

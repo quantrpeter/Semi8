@@ -33,15 +33,17 @@ reference and a Verilator test vehicle.
 open8_top                  (src/open8_top.v)   SoC: glue + I/O + debug
 ├── open8_core             (src/open8_core.v)  CPU datapath + control
 ├── open8_pmem             (src/open8_pmem.v)  program ROM (16-bit words)
-└── open8_dmem             (src/open8_dmem.v)  data SRAM (8-bit cells)
+├── open8_dmem             (src/open8_dmem.v)  data SRAM (8-bit cells)
+└── open8_spi              (src/open8_spi.v)   SPI master peripheral
 ```
 
 | Module       | Responsibility                                                            |
 |--------------|---------------------------------------------------------------------------|
-| `open8_top`  | Wires core to memories; decodes I/O port 0; exposes debug + status        |
+| `open8_top`  | Wires core to memories; decodes the I/O map; exposes debug + status       |
 | `open8_core` | Fetch, decode (`casez`), register file, ALU, flag logic, PC sequencing    |
 | `open8_pmem` | Holds the program; two combinational read ports (current + next word)     |
 | `open8_dmem` | Byte-addressable scratch RAM for `LDS`/`STS`                              |
+| `open8_spi`  | MSB-first SPI master (clock divider, CPOL/CPHA, software chip-select)      |
 
 ## Execution model
 
@@ -104,6 +106,26 @@ Flags are computed per the AVR semantics:
 | Program (ROM)    | word 0 … 4095    | fetched by PC; `LPM` not impl.  |
 | Data (SRAM)      | byte 0x000 … 0xFFF | `LDS`/`STS` (low 12 addr bits)|
 | I/O port 0       | I/O addr `0`     | `IN` reads `port_in`, `OUT` writes `port_out` (+1-cycle `port_out_we` strobe) |
+| SPI data         | I/O addr `1`     | `OUT` loads a byte and starts a transfer; `IN` reads the last received byte |
+| SPI status       | I/O addr `2`     | `IN` reads `{7'b0, busy}` (bit 0 = transfer in progress) |
+| SPI control      | I/O addr `3`     | `OUT` sets `[2:0]`=CLKDIV, `[3]`=CPOL, `[4]`=CPHA, `[5]`=CS_N |
+
+### SPI master
+
+`open8_spi` is a minimal full-duplex SPI **master**:
+
+* MSB-first, 8 bits per transfer.
+* `sck` half-period = `(CLKDIV + 1)` core clocks → `sck = clk / (2·(CLKDIV+1))`.
+* All four SPI modes via `CPOL`/`CPHA`.
+* `cs_n` is driven straight from the control-register `CS_N` bit, so software
+  frames multi-byte transactions itself (assert, send N bytes, deassert).
+* No interrupts yet — software polls the `busy` bit in SPI status and reads the
+  received byte from SPI data once it clears.
+
+On the iCESugar 40 the pins map to the board's SPI header
+(`SS=16, SCK=15, MOSI=17, MISO=14`). See `example/spi/spi.s` for a complete
+configure → transmit → poll → receive sequence, and `doc/SPI.md` for the full
+design, register details, and integration steps.
 
 ## Implemented instruction subset
 

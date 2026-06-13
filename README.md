@@ -27,6 +27,7 @@
 
 ## Current peripherals
 - Single 8-bit output port (drives LEDs on supported boards)
+- SPI master (I/O addresses 1–3): MSB-first, configurable clock divider and mode (CPOL/CPHA), software chip-select
 - Internal HFOSC (~48 MHz) on iCE40
 - Synchronised reset
 
@@ -124,6 +125,7 @@ make fpga-clean  # clean only FPGA build artifacts for the selected BOARD
 |--------------------|-------------------------------|-----------------------------------------------|
 | `program` (default)| `example/program/program.s`   | Computes sum 1..10 (= 0x37), writes to port 0, then `SLEEP` |
 | `blink`            | `example/blink/blink.s`       | Infinite loop toggling bit 0 of port 0 (visible blink on led0) |
+| `spi`              | `example/spi/spi.s`           | Configures the SPI master, sends 0xA5, polls busy, reads it back (MOSI→MISO loopback in sim) |
 
 Add your own by creating `example/myprog/myprog.s` (or `example/myprog/program.s`) and running `make EXAMPLE=myprog ...`.
 

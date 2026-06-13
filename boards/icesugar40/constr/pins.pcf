@@ -26,3 +26,10 @@ set_io led4 36
 set_io led5 38
 set_io led6 43
 set_io led7 45
+
+# --- SPI master (iCESugar dedicated SPI header, same pins as reference io.pcf) ---
+#   SPI_SS=16  SPI_SCK=15  SPI_MOSI=17  SPI_MISO=14
+set_io spi_cs_n 16
+set_io spi_sck  15
+set_io spi_mosi 17
+set_io spi_miso 14

@@ -24,7 +24,8 @@ RTL       := top.v \
              ../../src/open8_top.v \
              ../../src/open8_core.v \
              ../../src/open8_pmem.v \
-             ../../src/open8_dmem.v
+             ../../src/open8_dmem.v \
+             ../../src/open8_spi.v
 PCF       := constr/pins.pcf
 BUILD_DIR := build
 JSON      := $(BUILD_DIR)/$(TOP).json

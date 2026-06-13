@@ -19,13 +19,17 @@ double sc_time_stamp() { return main_time; }
 #define MAX_CYCLES 1000000
 
 static void tick() {
+    // SPI loopback: tie MISO to MOSI so the SPI master receives back whatever
+    // it transmits (lets the spi example self-check without an external slave).
     // falling edge
     dut->clk = 0;
+    dut->spi_miso = dut->spi_mosi;
     dut->eval();
     if (trace) trace->dump(main_time);
     main_time++;
     // rising edge
     dut->clk = 1;
+    dut->spi_miso = dut->spi_mosi;
     dut->eval();
     if (trace) trace->dump(main_time);
     main_time++;
@@ -54,10 +58,12 @@ int main(int argc, char** argv) {
     Verilated::traceEverOn(true);
     const char* vcd_name = "open8.vcd";
     bool is_blink = false;
+    bool is_spi = false;
     int max_cycles = MAX_CYCLES;
     for (int i = 1; i < argc; i++) {
         if (strncmp(argv[i], "+trace=", 7) == 0) vcd_name = argv[i] + 7;
         if (strncmp(argv[i], "+example=blink", 14) == 0) is_blink = true;
+        if (strncmp(argv[i], "+example=spi", 12) == 0) is_spi = true;
         if (strncmp(argv[i], "+max_cycles=", 12) == 0) max_cycles = atoi(argv[i] + 12);
     }
     trace = new VerilatedVcdC;
@@ -67,6 +73,7 @@ int main(int argc, char** argv) {
     dut->clk = 0;
     dut->rst_n = 0;
     dut->port_in = 0;
+    dut->spi_miso = 0;
     dut->dbg_addr = 0;
 
     // hold reset
@@ -122,6 +129,10 @@ int main(int argc, char** argv) {
             printf("  [INFO] no port_out write observed within cycle limit (delay loops are long)\n");
         }
         printf("  [INFO] port_out_we strobes observed: %d\n", port_writes);
+    } else if (is_spi) {
+        // SPI demo: with MOSI looped back to MISO, the byte sent (0xA5) comes
+        // back unchanged and the program stores it in R18.
+        check("R18 spi rx", read_reg(18), 0xA5);
     } else {
         // Original sum-program verification
         check("R16 sum",   read_reg(16), 55);

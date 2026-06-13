@@ -14,6 +14,12 @@ module open8_top #(
     output reg  [7:0]  port_out,
     output reg         port_out_we,
 
+    // SPI master (I/O addresses 1..3)
+    output wire        spi_sck,
+    output wire        spi_mosi,
+    input  wire        spi_miso,
+    output wire        spi_cs_n,
+
     // status + debug
     output wire        halted,
     input  wire [4:0]  dbg_addr,
@@ -35,6 +41,18 @@ module open8_top #(
     wire [5:0]             io_addr;
     wire [7:0]             io_wdata;
     reg  [7:0]             io_rdata;
+
+    // I/O address map
+    localparam [5:0] IO_PORT0    = 6'd0;  // 8-bit GPIO port (LEDs)
+    localparam [5:0] IO_SPI_DATA = 6'd1;  // SPI data (write=start, read=rx)
+    localparam [5:0] IO_SPI_STAT = 6'd2;  // SPI status (bit0 = busy)
+    localparam [5:0] IO_SPI_CTRL = 6'd3;  // SPI control register
+
+    // SPI read-back / strobes
+    wire [7:0]             spi_rx;
+    wire                   spi_busy;
+    wire                   spi_ctrl_we = io_we && (io_addr == IO_SPI_CTRL);
+    wire                   spi_data_we = io_we && (io_addr == IO_SPI_DATA);
 
     open8_core #(
         .PROG_ADDR_W(PROG_ADDR_W),
@@ -78,10 +96,26 @@ module open8_top #(
         .wdata(dmem_wdata), .rdata(dmem_rdata)
     );
 
+    // SPI master peripheral (I/O addresses 1..3). Writes to SPI_CTRL / SPI_DATA
+    // arrive as one-cycle strobes; reads are returned through the I/O read mux.
+    open8_spi u_spi (
+        .clk(clk), .rst_n(rst_n),
+        .ctrl_we(spi_ctrl_we),
+        .data_we(spi_data_we),
+        .wdata(io_wdata),
+        .rx_data(spi_rx),
+        .busy(spi_busy),
+        .sck(spi_sck), .mosi(spi_mosi), .miso(spi_miso), .cs_n(spi_cs_n)
+    );
+
     // I/O read mux
     always @* begin
-        io_rdata = 8'h00;
-        if (io_addr == 6'd0) io_rdata = port_in;
+        case (io_addr)
+            IO_PORT0:    io_rdata = port_in;
+            IO_SPI_DATA: io_rdata = spi_rx;
+            IO_SPI_STAT: io_rdata = {7'b0, spi_busy};
+            default:     io_rdata = 8'h00;
+        endcase
     end
 
     // I/O write capture (port 0 -> port_out, with a 1-cycle strobe)
@@ -91,7 +125,7 @@ module open8_top #(
             port_out_we <= 1'b0;
         end else begin
             port_out_we <= 1'b0;
-            if (io_we && io_addr == 6'd0) begin
+            if (io_we && io_addr == IO_PORT0) begin
                 port_out    <= io_wdata;
                 port_out_we <= 1'b1;
             end

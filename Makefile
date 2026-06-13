@@ -22,7 +22,7 @@
 # See boards/icesugar40/ for the first supported target (IceSugar 40).
 
 TOP      := open8_top
-SRC      := src/open8_top.v src/open8_core.v src/open8_pmem.v src/open8_dmem.v
+SRC      := src/open8_top.v src/open8_core.v src/open8_pmem.v src/open8_dmem.v src/open8_spi.v
 TB       := tb/sim_main.cpp
 HEX      := program.hex
 

@@ -33,7 +33,13 @@ module top (
     output wire led4,
     output wire led5,
     output wire led6,
-    output wire led7
+    output wire led7,
+
+    // SPI master header (iCESugar SPI pins — see pins.pcf)
+    output wire spi_sck,
+    output wire spi_mosi,
+    input  wire spi_miso,
+    output wire spi_cs_n
 );
 
     // ------------------------------------------------------------
@@ -66,6 +72,11 @@ module top (
         .port_in    (8'h00),
         .port_out   (port_out),
         .port_out_we(),
+
+        .spi_sck    (spi_sck),
+        .spi_mosi   (spi_mosi),
+        .spi_miso   (spi_miso),
+        .spi_cs_n   (spi_cs_n),
 
         .halted     (),
         .dbg_addr   (5'd0),

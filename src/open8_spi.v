@@ -6,13 +6,14 @@
 // register bit so software can frame multi-byte transactions itself.
 //
 // It hangs off the same simple I/O bus as the rest of the SoC. open8_top
-// decodes the I/O addresses and gives this module two one-cycle write strobes
-// plus read-back wires:
+// decodes the I/O addresses (the SPI registers sit just after the GPIO banks,
+// i.e. at IO_PORTS + 0..2, = 32/33/34 by default) and gives this module two
+// one-cycle write strobes plus read-back wires:
 //
-//   I/O addr 1  SPI_DATA   OUT -> load TX byte and start a transfer
-//                          IN  -> last received byte (rx_data)
-//   I/O addr 2  SPI_STAT   IN  -> { 7'b0, busy }
-//   I/O addr 3  SPI_CTRL   OUT -> control register (see layout below)
+//   SPI_DATA   OUT -> load TX byte and start a transfer
+//              IN  -> last received byte (rx_data)
+//   SPI_STAT   IN  -> { 7'b0, busy }
+//   SPI_CTRL   OUT -> control register (see layout below)
 //
 // Control register (written via ctrl_we):
 //   [2:0] CLKDIV  sck half-period = (CLKDIV + 1) core clocks

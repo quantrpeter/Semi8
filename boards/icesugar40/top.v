@@ -56,20 +56,24 @@ module top (
     wire rst_n = por_counter[15];
 
     // ------------------------------------------------------------
-    // Open8 SoC: runs program.hex, OUT 0,Rn drives port_out
+    // Open8 SoC: runs program.hex. The GPIO is banked (addr k -> pins
+    // [8k +: 8]); this board only wires bank 0's low 8 bits to the LEDs.
+    // Unused GPIO bits are trimmed away by synthesis.
     // ------------------------------------------------------------
-    wire [7:0] port_out;
+    localparam IO_PORTS = 32;                 // up to 256 GPIO pins; SPI at addr 32..34
+    wire [IO_PORTS*8-1:0] port_out;
 
     // DMEM_ADDR_W=6 -> 64 bytes of data RAM. The data memory is asynchronous-
     // read, so yosys must build it from flip-flops/LUTs (iCE40 BRAM is
     // synchronous-read only); the default 4 KB would not fit in a UP5K.
     open8_top #(
-        .DMEM_ADDR_W(6)
+        .DMEM_ADDR_W(6),
+        .IO_PORTS   (IO_PORTS)
     ) u_open8 (
         .clk        (clk),
         .rst_n      (rst_n),
 
-        .port_in    (8'h00),
+        .port_in    ({(IO_PORTS*8){1'b0}}),
         .port_out   (port_out),
         .port_out_we(),
 

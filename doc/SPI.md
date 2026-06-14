@@ -29,24 +29,28 @@ The Open8 core already exposes a simple memory-mapped I/O bus, driven by the
 
 Because the core is single-cycle, `io_we` is asserted for **exactly one clock**
 when an `OUT` executes — a clean start strobe for a peripheral. `io_addr` is
-6 bits, so up to **64 I/O addresses** are available; before SPI, only address 0
-(the GPIO/LED port) was decoded.
+6 bits, so up to **64 I/O addresses** are available.
 
-The SPI peripheral simply claims three more of those addresses.
+The low addresses are a **banked GPIO** region: addresses `0 … IO_PORTS-1` are
+each an 8-bit output/input port, with bank `k` mapped to pins `[8k+7 : 8k]`.
+`IO_PORTS` is a parameter of `open8_top` (default **32**), so the GPIO can span
+up to **256 pins**. The SPI peripheral claims the three addresses immediately
+**after** that region — with the default `IO_PORTS=32` they are **32, 33, 34**.
 
 ---
 
 ## 2. Register map
 
-Decoded in `src/open8_top.v`:
+Decoded in `src/open8_top.v` (`IO_PORTS` = 32 by default; the SPI addresses are
+`IO_PORTS + 0..2` = 32/33/34):
 
-| I/O addr | Name       | Access | Description                                                        |
-|----------|------------|--------|--------------------------------------------------------------------|
-| 0        | `PORT0`    | R/W    | 8-bit GPIO port (LEDs) — pre-existing                              |
-| 1        | `SPI_DATA` | W      | Load a byte **and start** a transfer                               |
-|          |            | R      | Last received byte (`rx_data`)                                     |
-| 2        | `SPI_STAT` | R      | `{7'b0, busy}` — bit 0 = transfer in progress                      |
-| 3        | `SPI_CTRL` | W      | Control register (see below)                                       |
+| I/O addr        | Name       | Access | Description                                                        |
+|-----------------|------------|--------|--------------------------------------------------------------------|
+| `0 … IO_PORTS-1`| GPIO bank  | R/W    | 8-bit GPIO; addr `k` → pins `[8k+7 : 8k]` (bank 0 drives the LEDs)  |
+| `IO_PORTS+0` (32)| `SPI_DATA`| W      | Load a byte **and start** a transfer                               |
+|                 |            | R      | Last received byte (`rx_data`)                                     |
+| `IO_PORTS+1` (33)| `SPI_STAT`| R      | `{7'b0, busy}` — bit 0 = transfer in progress                      |
+| `IO_PORTS+2` (34)| `SPI_CTRL`| W      | Control register (see below)                                       |
 
 ### Control register (`SPI_CTRL`, write)
 
@@ -146,20 +150,23 @@ module open8_spi (
 - Added the SPI pins to the module port list:
 
 ```verilog
-    // SPI master (I/O addresses 1..3)
+    // SPI master (I/O addresses IO_PORTS + 0..2)
     output wire        spi_sck,
     output wire        spi_mosi,
     input  wire        spi_miso,
     output wire        spi_cs_n,
 ```
 
-- Defined the I/O address map and the per-register write strobes:
+- Placed the SPI registers immediately after the banked GPIO region, so their
+  addresses are derived from the `IO_PORTS` parameter:
 
 ```verilog
-    localparam [5:0] IO_PORT0    = 6'd0;
-    localparam [5:0] IO_SPI_DATA = 6'd1;
-    localparam [5:0] IO_SPI_STAT = 6'd2;
-    localparam [5:0] IO_SPI_CTRL = 6'd3;
+    localparam [5:0] IO_SPI_DATA = IO_PORTS[5:0];          // 32 by default
+    localparam [5:0] IO_SPI_STAT = IO_PORTS[5:0] + 6'd1;   // 33
+    localparam [5:0] IO_SPI_CTRL = IO_PORTS[5:0] + 6'd2;   // 34
+
+    wire                io_is_gpio  = (io_addr < IO_PORTS[5:0]);
+    wire [IO_IDX_W-1:0] bank        = io_addr[IO_IDX_W-1:0];
 
     wire [7:0] spi_rx;
     wire       spi_busy;
@@ -167,10 +174,17 @@ module open8_spi (
     wire       spi_data_we = io_we && (io_addr == IO_SPI_DATA);
 ```
 
-- Instantiated `open8_spi` and widened the I/O read mux from a single `if` into
-  a `case` that returns `port_in`, `spi_rx`, or `{7'b0, spi_busy}` depending on
-  `io_addr`. (The existing port-0 write capture / `port_out_we` strobe is
-  unchanged; SPI writes are handled inside the peripheral via the strobes.)
+- Instantiated `open8_spi`, and reworked the I/O read mux and write capture so
+  that any address below `IO_PORTS` targets a GPIO bank
+  (`port_out[bank*8 +: 8]` / `port_in[bank*8 +: 8]`, with a per-bank
+  `port_out_we[bank]` strobe), while the three SPI addresses return `spi_rx` /
+  `{7'b0, busy}` and drive the `spi_*_we` strobes.
+
+> **Note on the I/O map.** The GPIO used to be a single 8-bit port at address 0.
+> It is now a **bank of `IO_PORTS` 8-bit ports** (default 32 → up to 256 pins):
+> address `k` maps to pins `[8k+7 : 8k]`. `port_out`/`port_in` became flattened
+> `IO_PORTS*8`-bit buses and `port_out_we` a per-bank `IO_PORTS`-bit strobe
+> vector. The SPI registers moved from 1/2/3 to `IO_PORTS+0..2` (32/33/34).
 
 ### Step 3 — Board wiring: `boards/icesugar40/top.v`
 
@@ -213,32 +227,35 @@ A configure → transmit → poll → receive sequence (see §5).
 There is no bit-test/skip instruction yet, so the busy flag is polled with
 `IN` + `ANDI` + `BRNE`. From `example/spi/spi.s`:
 
+With the default `IO_PORTS=32`, SPI_DATA=32, SPI_STAT=33, SPI_CTRL=34. From
+`example/spi/spi.s`:
+
 ```asm
         ; configure: CLKDIV=1, CPOL=0, CPHA=0 (mode 0), CS asserted (CS_N=0)
         LDI   R16, 0x01
-        OUT   3, R16
+        OUT   34, R16         ; SPI_CTRL
 
         ; start a transfer of 0xA5
         LDI   R16, 0xA5
-        OUT   1, R16          ; write SPI_DATA -> begins shifting
+        OUT   32, R16         ; write SPI_DATA -> begins shifting
 
 wait:
-        IN    R17, 2          ; read SPI_STAT
+        IN    R17, 33         ; read SPI_STAT
         ANDI  R17, 0x01       ; isolate busy bit
         BRNE  wait            ; spin while busy
 
-        IN    R18, 1          ; R18 <- received byte
+        IN    R18, 32         ; R18 <- received byte
 
         ; deassert CS (CS_N=1), keep CLKDIV=1 / mode 0
         LDI   R16, 0x21
-        OUT   3, R16
+        OUT   34, R16         ; SPI_CTRL
 
         SLEEP
 ```
 
-**Multi-byte transactions**: assert CS once (`OUT 3` with `CS_N=0`), then repeat
+**Multi-byte transactions**: assert CS once (`OUT 34` with `CS_N=0`), then repeat
 the *start → poll busy → read* sequence for each byte, and finally deassert CS
-(`OUT 3` with `CS_N=1`).
+(`OUT 34` with `CS_N=1`).
 
 **Control-byte cheat sheet** (mode 0, CS asserted): `clkdiv` in bits `[2:0]`,
 `CS_N` in bit 5.

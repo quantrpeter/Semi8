@@ -1,20 +1,27 @@
-// Open8 SoC top: CPU core + program ROM + data SRAM + a single 8-bit I/O port.
-// I/O address 0 maps to {port_out (write), port_in (read)}.
+// Open8 SoC top: CPU core + program ROM + data SRAM + banked GPIO + SPI master.
+//
+// I/O address map (selected by the OUT/IN address field, 6 bits):
+//   0 .. IO_PORTS-1   8-bit GPIO banks  (addr k -> pins [8k+7 : 8k])
+//                     With IO_PORTS=32 this is up to 256 output pins.
+//   IO_PORTS + 0      SPI_DATA  (write: load+start transfer / read: rx byte)
+//   IO_PORTS + 1      SPI_STAT  (read: bit0 = busy)
+//   IO_PORTS + 2      SPI_CTRL  (write: clkdiv/CPOL/CPHA/CS_N)
 module open8_top #(
     parameter PROG_ADDR_W = 12,
     parameter DATA_ADDR_W = 16,
     parameter DMEM_ADDR_W = 12,
+    parameter IO_PORTS    = 32,            // number of 8-bit GPIO banks (<=32 -> up to 256 pins)
     parameter PROG_INIT   = "program.hex"
 )(
     input  wire        clk,
     input  wire        rst_n,
 
-    // I/O port
-    input  wire [7:0]  port_in,
-    output reg  [7:0]  port_out,
-    output reg         port_out_we,
+    // Banked GPIO. Bank k occupies bits [8k +: 8] of these flattened buses.
+    input  wire [IO_PORTS*8-1:0] port_in,
+    output reg  [IO_PORTS*8-1:0] port_out,
+    output reg  [IO_PORTS-1:0]   port_out_we,   // per-bank 1-cycle write strobe
 
-    // SPI master (I/O addresses 1..3)
+    // SPI master (I/O addresses IO_PORTS + 0..2)
     output wire        spi_sck,
     output wire        spi_mosi,
     input  wire        spi_miso,
@@ -27,6 +34,8 @@ module open8_top #(
     output wire [7:0]  dbg_sreg,
     output wire [15:0] dbg_pc
 );
+    // Width of the bank-select index taken from io_addr (e.g. 5 bits for 32 banks).
+    localparam IO_IDX_W = (IO_PORTS <= 1) ? 1 : $clog2(IO_PORTS);
     // program memory bus
     wire [PROG_ADDR_W-1:0] pa, pb;
     wire [15:0]            da, db;
@@ -42,11 +51,15 @@ module open8_top #(
     wire [7:0]             io_wdata;
     reg  [7:0]             io_rdata;
 
-    // I/O address map
-    localparam [5:0] IO_PORT0    = 6'd0;  // 8-bit GPIO port (LEDs)
-    localparam [5:0] IO_SPI_DATA = 6'd1;  // SPI data (write=start, read=rx)
-    localparam [5:0] IO_SPI_STAT = 6'd2;  // SPI status (bit0 = busy)
-    localparam [5:0] IO_SPI_CTRL = 6'd3;  // SPI control register
+    // I/O address map. GPIO banks occupy addresses 0..IO_PORTS-1; the SPI
+    // registers follow immediately after the GPIO region.
+    localparam [5:0] IO_SPI_DATA = IO_PORTS[5:0];          // SPI data (write=start, read=rx)
+    localparam [5:0] IO_SPI_STAT = IO_PORTS[5:0] + 6'd1;   // SPI status (bit0 = busy)
+    localparam [5:0] IO_SPI_CTRL = IO_PORTS[5:0] + 6'd2;   // SPI control register
+
+    // GPIO bank select: an OUT/IN address below IO_PORTS targets a GPIO bank.
+    wire                   io_is_gpio = (io_addr < IO_PORTS[5:0]);
+    wire [IO_IDX_W-1:0]    bank = io_addr[IO_IDX_W-1:0];
 
     // SPI read-back / strobes
     wire [7:0]             spi_rx;
@@ -96,8 +109,9 @@ module open8_top #(
         .wdata(dmem_wdata), .rdata(dmem_rdata)
     );
 
-    // SPI master peripheral (I/O addresses 1..3). Writes to SPI_CTRL / SPI_DATA
-    // arrive as one-cycle strobes; reads are returned through the I/O read mux.
+    // SPI master peripheral (I/O addresses IO_PORTS + 0..2). Writes to
+    // SPI_CTRL / SPI_DATA arrive as one-cycle strobes; reads come back through
+    // the I/O read mux.
     open8_spi u_spi (
         .clk(clk), .rst_n(rst_n),
         .ctrl_we(spi_ctrl_we),
@@ -108,26 +122,31 @@ module open8_top #(
         .sck(spi_sck), .mosi(spi_mosi), .miso(spi_miso), .cs_n(spi_cs_n)
     );
 
-    // I/O read mux
+    // I/O read mux: GPIO banks read back the corresponding input pins; the SPI
+    // registers return rx data / busy status.
     always @* begin
-        case (io_addr)
-            IO_PORT0:    io_rdata = port_in;
-            IO_SPI_DATA: io_rdata = spi_rx;
-            IO_SPI_STAT: io_rdata = {7'b0, spi_busy};
-            default:     io_rdata = 8'h00;
-        endcase
+        if (io_is_gpio)
+            io_rdata = port_in[bank*8 +: 8];
+        else if (io_addr == IO_SPI_DATA)
+            io_rdata = spi_rx;
+        else if (io_addr == IO_SPI_STAT)
+            io_rdata = {7'b0, spi_busy};
+        else
+            io_rdata = 8'h00;
     end
 
-    // I/O write capture (port 0 -> port_out, with a 1-cycle strobe)
+    // I/O write capture: OUT to a GPIO bank updates that bank's 8 output pins
+    // and pulses its 1-cycle write strobe. (SPI writes are handled by the
+    // peripheral via spi_ctrl_we / spi_data_we.)
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            port_out    <= 8'h00;
-            port_out_we <= 1'b0;
+            port_out    <= {(IO_PORTS*8){1'b0}};
+            port_out_we <= {IO_PORTS{1'b0}};
         end else begin
-            port_out_we <= 1'b0;
-            if (io_we && io_addr == IO_PORT0) begin
-                port_out    <= io_wdata;
-                port_out_we <= 1'b1;
+            port_out_we <= {IO_PORTS{1'b0}};
+            if (io_we && io_is_gpio) begin
+                port_out[bank*8 +: 8] <= io_wdata;
+                port_out_we[bank]     <= 1'b1;
             end
         end
     end

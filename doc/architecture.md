@@ -24,7 +24,7 @@ reference and a Verilator test vehicle.
 | Status register       | `SREG = {I,T,H,S,V,N,Z,C}`                                   |
 | Program memory        | 4K × 16-bit ROM, dual asynchronous read                     |
 | Data memory           | 4K × 8-bit SRAM, async read / sync write                    |
-| I/O                   | one 8-bit port at I/O address 0                              |
+| I/O                   | banked 8-bit GPIO (addr 0…IO_PORTS-1) + SPI master           |
 | Reset                 | asynchronous, active-low (`rst_n`)                           |
 
 ## Module hierarchy
@@ -105,10 +105,16 @@ Flags are computed per the AVR semantics:
 |------------------|------------------|---------------------------------|
 | Program (ROM)    | word 0 … 4095    | fetched by PC; `LPM` not impl.  |
 | Data (SRAM)      | byte 0x000 … 0xFFF | `LDS`/`STS` (low 12 addr bits)|
-| I/O port 0       | I/O addr `0`     | `IN` reads `port_in`, `OUT` writes `port_out` (+1-cycle `port_out_we` strobe) |
-| SPI data         | I/O addr `1`     | `OUT` loads a byte and starts a transfer; `IN` reads the last received byte |
-| SPI status       | I/O addr `2`     | `IN` reads `{7'b0, busy}` (bit 0 = transfer in progress) |
-| SPI control      | I/O addr `3`     | `OUT` sets `[2:0]`=CLKDIV, `[3]`=CPOL, `[4]`=CPHA, `[5]`=CS_N |
+| GPIO banks       | I/O addr `0 … IO_PORTS-1` | each address is an 8-bit port; addr `k` maps to pins `[8k+7 : 8k]`. `OUT` writes `port_out[k]` (+1-cycle `port_out_we[k]` strobe), `IN` reads `port_in[k]` |
+| SPI data         | I/O addr `IO_PORTS+0` | `OUT` loads a byte and starts a transfer; `IN` reads the last received byte |
+| SPI status       | I/O addr `IO_PORTS+1` | `IN` reads `{7'b0, busy}` (bit 0 = transfer in progress) |
+| SPI control      | I/O addr `IO_PORTS+2` | `OUT` sets `[2:0]`=CLKDIV, `[3]`=CPOL, `[4]`=CPHA, `[5]`=CS_N |
+
+`IO_PORTS` is a parameter of `open8_top` (default **32**, i.e. up to **256
+GPIO output pins**). The SPI registers always sit immediately after the GPIO
+region, so with the default they live at I/O addresses **32, 33, 34**. The I/O
+address field is 6 bits, so the GPIO banks plus SPI comfortably fit within the
+64-address space.
 
 ### SPI master
 

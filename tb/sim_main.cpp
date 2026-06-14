@@ -72,7 +72,8 @@ int main(int argc, char** argv) {
 
     dut->clk = 0;
     dut->rst_n = 0;
-    dut->port_in = 0;
+    // port_in is now a wide banked GPIO bus (IO_PORTS*8 bits); keep it all zero.
+    memset(&dut->port_in, 0, sizeof(dut->port_in));
     dut->spi_miso = 0;
     dut->dbg_addr = 0;
 
@@ -88,8 +89,10 @@ int main(int argc, char** argv) {
     const int BLINK_TOGGLES_FOR_WAVE = 6;  // capture a few full 0<->FF transitions for gtkwave
     while (!dut->halted && cycles < max_cycles) {
         tick();
-        if (dut->port_out_we) {
-            port_out_seen = dut->port_out;
+        // GPIO bank 0 occupies the low byte of the wide port_out bus, and its
+        // write strobe is bit 0 of the per-bank port_out_we vector.
+        if (dut->port_out_we & 0x1u) {
+            port_out_seen = dut->port_out[0] & 0xFF;
             port_out_valid = true;
             port_writes++;
             if (is_blink && port_writes >= BLINK_TOGGLES_FOR_WAVE) {

@@ -4,7 +4,7 @@
 
 > **Note**: This is a minimal, work-in-progress implementation of an AVR-inspired 8-bit soft core.
 > The current core supports a useful subset of instructions (LDI, arithmetic/logic, OUT/IN, STS/LDS,
-> branches, RJMP, SLEEP, etc.) and a single 8-bit I/O port. Many AVR features (stack, interrupts,
+> branches, RJMP, SLEEP, etc.), banked GPIO and an SPI master. Many AVR features (stack, interrupts,
 > timers, indirect addressing, subroutines) are not yet implemented. See `doc/` for the current state.
 
 ## Architecture Goals
@@ -23,17 +23,17 @@
 ## Memory (current)
 - Program memory loaded from `program.hex` via `$readmemh`
 - Small data memory (see `src/open8_dmem.v`)
-- One 8-bit I/O port at address 0 (`OUT 0, Rn` / `IN Rn, 0`)
+- Banked 8-bit GPIO at I/O addresses `0 … IO_PORTS-1` (default 32 banks → up to 256 pins); address `k` maps to pins `[8k+7 : 8k]` (`OUT k, Rn` / `IN Rn, k`)
 
 ## Current peripherals
-- Single 8-bit output port (drives LEDs on supported boards)
-- SPI master (I/O addresses 1–3): MSB-first, configurable clock divider and mode (CPOL/CPHA), software chip-select
+- Banked 8-bit GPIO (drives LEDs on supported boards via bank 0); `IO_PORTS` parameter selects the number of banks (default 32 = 256 pins)
+- SPI master at I/O addresses `IO_PORTS+0..2` (32–34 by default): MSB-first, configurable clock divider and mode (CPOL/CPHA), software chip-select
 - Internal HFOSC (~48 MHz) on iCE40
 - Synchronised reset
 
 ## Instruction set (current subset)
 - LDI, MOV, arithmetic, logic, shifts
-- OUT / IN (I/O port 0)
+- OUT / IN (banked GPIO + SPI registers)
 - STS / LDS (direct data memory)
 - RJMP, conditional branches (BRNE, BREQ, etc.)
 - SLEEP, NOP, SEI/CLI

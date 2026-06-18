@@ -16,7 +16,7 @@ static vluint64_t    main_time = 0;
 
 double sc_time_stamp() { return main_time; }
 
-#define MAX_CYCLES 100
+#define MAX_CYCLES 10000
 
 static void tick() {
     // SPI loopback: tie MISO to MOSI so the SPI master receives back whatever
